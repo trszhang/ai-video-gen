@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+httpx
+aiofiles
+pillow
+moviepy
+google-genai
+jinja2
+python-multipart
