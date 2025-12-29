@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Director Remote</title>
+    <style>
+        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+        
+        .card { width: 80%; padding: 30px; background: #111; border-radius: 20px; border: 1px solid #333; }
+        
+        .btn-upload { 
+            background: linear-gradient(135deg, #00d4ff, #005f73); 
+            border: none; padding: 20px 0; border-radius: 50px; width: 100%;
+            color: #fff; font-size: 18px; font-weight: bold; 
+            box-shadow: 0 10px 20px rgba(0,212,255,0.2);
+            display: block; cursor: pointer; margin-top: 20px;
+        }
+        .btn-upload:active { transform: scale(0.98); }
+        
+        input[type="file"] { display: none; }
+        
+        .success-anim { display: none; color: #00d4ff; }
+        .success-anim h1 { font-size: 60px; margin: 0; }
+        
+        h2 { margin: 0 0 10px 0; font-weight: 600; }
+        p { color: #666; font-size: 14px; margin: 0; }
+    </style>
+</head>
+<body>
+
+    <div id="upload-box" class="card">
+        <h2>Remote Upload</h2>
+        <p>Session ID: {{ session_id }}</p>
+        
+        <label class="btn-upload">
+            📸 拍照 / 选图
+            <input type="file" id="file-input" accept="image/*" capture="environment">
+        </label>
+    </div>
+
+    <div id="success-box" class="success-anim">
+        <h1>🚀</h1>
+        <h3>发送成功!</h3>
+        <p style="color:#fff;">请抬头看大屏幕</p>
+    </div>
+
+    <script>
+        const SESSION_ID = "{{ session_id }}";
+        const fileInput = document.getElementById('file-input');
+
+        fileInput.onchange = async (e) => {
+            if (e.target.files.length === 0) return;
+            
+            const btn = document.querySelector('.btn-upload');
+            const originalText = btn.innerText;
+            btn.innerText = "⏳ 传输中...";
+            btn.style.opacity = "0.7";
+
+            const fd = new FormData();
+            fd.append("file", e.target.files[0]);
+            fd.append("session_id", SESSION_ID);
+
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: fd });
+                if (res.ok) {
+                    document.getElementById('upload-box').style.display = "none";
+                    document.getElementById('success-box').style.display = "block";
+                } else {
+                    throw new Error("API Error");
+                }
+            } catch (err) {
+                alert("上传失败，请检查网络");
+                btn.innerText = originalText;
+                btn.style.opacity = "1";
+            }
+        };
+    </script>
+</body>
+</html>
