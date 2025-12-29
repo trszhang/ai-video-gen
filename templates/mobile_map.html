@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Halo-Net Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        #map { width: 100vw; height: 100vh; z-index: 1; }
+
+        /* 顶部 AI 状态卡片 */
+        #status-card {
+            position: absolute; top: 20px; left: 15px; right: 15px;
+            background: rgba(20, 20, 20, 0.9);
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 12px; border-radius: 12px; z-index: 999;
+            display: flex; align-items: center; gap: 15px;
+        }
+        #mini-video { width: 80px; height: 45px; background: #333; border-radius: 6px; object-fit: cover; display: none; }
+        .spinner { width: 20px; height: 20px; border: 3px solid #333; border-top-color: #00d4ff; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 底部操作栏 */
+        .controls {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: rgba(10, 10, 10, 0.95);
+            padding: 20px; border-top-left-radius: 20px; border-top-right-radius: 20px;
+            z-index: 999; box-sizing: border-box;
+        }
+        .btn-cast {
+            width: 100%; padding: 16px; border: none; border-radius: 12px;
+            background: #333; color: #777; font-size: 16px; font-weight: bold;
+            transition: 0.3s;
+        }
+        .btn-active { background: #00d4ff; color: #000; box-shadow: 0 0 20px rgba(0,212,255,0.4); }
+    </style>
+</head>
+<body>
+
+    <div id="status-card">
+        <div id="loading-icon" class="spinner"></div>
+        <video id="mini-video" loop muted playsinline></video>
+        <div>
+            <div style="font-size:12px; color:#888;">AI STATUS</div>
+            <div id="status-text" style="color:#00d4ff; font-weight:bold;">Generating...</div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="controls">
+        <div style="display:flex; justify-content:space-between; color:#888; font-size:12px; margin-bottom:10px;">
+            <span>Coverage Radius</span>
+            <span id="rad-display">500m</span>
+        </div>
+        <input type="range" id="radius-slider" min="100" max="2000" step="50" value="500" style="width:100%; margin-bottom:20px; accent-color: #00d4ff;">
+        
+        <button id="btn-broadcast" class="btn-cast" disabled onclick="broadcast()">
+            Wait for Video...
+        </button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const SID = "{{ session_id }}";
+        let map, circle, screens = [], selected = [];
+        let isVideoReady = false;
+
+        // 1. 初始化地图
+        navigator.geolocation.getCurrentPosition(pos => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            
+            // 地图设置
+            map = L.map('map', {zoomControl:false}).setView([lat, lon], 14);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+            // 用户位置
+            L.circleMarker([lat, lon], {radius:8, color:'#00d4ff', fillColor:'#00d4ff', fillOpacity:1}).addTo(map);
+            
+            // 覆盖圈
+            circle = L.circle([lat, lon], {radius:500, color:'#00d4ff', weight:1, fillOpacity:0.1}).addTo(map);
+
+            // 获取虚拟屏幕点位
+            fetch(`/api/lbs/nearby?lat=${lat}&lon=${lon}`)
+                .then(r => r.json())
+                .then(d => {
+                    screens = d.data;
+                    screens.forEach(s => {
+                        // 初始为灰色点
+                        s.marker = L.circleMarker([s.lat, s.lon], {radius:4, color:'#444', weight:1, fillOpacity:0.5}).addTo(map);
+                    });
+                    calcSelection(500);
+                });
+
+        }, () => alert("Location Denied. Using Default."), {timeout: 10000});
+
+        // 2. 半径滑块
+        document.getElementById('radius-slider').oninput = function() {
+            const r = parseInt(this.value);
+            document.getElementById('rad-display').innerText = r + 'm';
+            if(circle) circle.setRadius(r);
+            calcSelection(r);
+        };
+
+        function calcSelection(r) {
+            if(!map) return;
+            selected = [];
+            const center = map.getCenter();
+            
+            screens.forEach(s => {
+                const dist = map.distance(center, [s.lat, s.lon]);
+                if(dist <= r) {
+                    selected.push(s.id);
+                    // 如果视频准备好了，选中点变绿；否则还是暗色
+                    s.marker.setStyle({color: isVideoReady ? '#00ff00' : '#666', fillColor: isVideoReady ? '#00ff00' : '#666'});
+                } else {
+                    s.marker.setStyle({color:'#444', fillColor:'#444'});
+                }
+            });
+
+            if(isVideoReady) {
+                document.getElementById('btn-broadcast').innerText = `Broadcast to ${selected.length} Screens`;
+            }
+        }
+
+        // 3. 轮询 AI 结果
+        const poll = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/status/${SID}`);
+                const data = await res.json();
+
+                if(data.status === 'ready') {
+                    clearInterval(poll);
+                    isVideoReady = true;
+
+                    // 更新 UI
+                    document.getElementById('loading-icon').style.display = 'none';
+                    document.getElementById('mini-video').style.display = 'block';
+                    document.getElementById('mini-video').src = data.video_url;
+                    document.getElementById('mini-video').play();
+                    
+                    document.getElementById('status-text').innerText = "READY TO DEPLOY";
+                    document.getElementById('status-text').style.color = "#00ff00";
+
+                    const btn = document.getElementById('btn-broadcast');
+                    btn.disabled = false;
+                    btn.classList.add('btn-active');
+                    
+                    // 重新计算选中状态（变绿）
+                    calcSelection(parseInt(document.getElementById('radius-slider').value));
+                }
+            } catch(e){}
+        }, 2000);
+
+        // 4. 投放指令
+        async function broadcast() {
+            if(!isVideoReady) return;
+            const btn = document.getElementById('btn-broadcast');
+            btn.innerText = "🚀 Broadcasting...";
+            
+            await fetch('/api/broadcast', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({session_id: SID, screen_ids: selected})
+            });
+
+            // 视觉反馈：所有选中点变红炸裂
+            screens.forEach(s => {
+                if(selected.includes(s.id)) {
+                    s.marker.setStyle({color:'#ff0000', fillColor:'#ff0000', radius:8});
+                }
+            });
+            alert("Broadcast Successful! Check the PC screen.");
+        }
+    </script>
+</body>
+</html>

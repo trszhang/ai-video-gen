@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Halo-Net Billboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { margin: 0; background: #000; color: #fff; font-family: 'Arial', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        
+        #idle-screen { text-align: center; transition: 0.5s opacity; }
+        h1 { font-size: 3rem; margin: 0 0 20px 0; background: linear-gradient(90deg, #00d4ff, #fff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        #qr-container { background: white; padding: 20px; border-radius: 16px; display: inline-block; box-shadow: 0 0 30px rgba(0, 212, 255, 0.2); }
+        
+        .status-badge { margin-top: 25px; display: inline-block; padding: 8px 24px; background: rgba(255,255,255,0.1); border-radius: 50px; border: 1px solid rgba(255,255,255,0.1); font-size: 14px; letter-spacing: 1px; color: #888; transition: 0.3s; }
+        
+        #video-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 10; display: none; }
+        video { width: 100%; height: 100%; object-fit: contain; }
+    </style>
+</head>
+<body>
+
+    <div id="idle-screen">
+        <h1>HALO-NET</h1>
+        <div id="qr-container"></div>
+        <br>
+        <div class="status-badge" id="status-text">SCAN TO CONNECT</div>
+        <p style="color:#444; margin-top:10px; font-size:12px;">ID: {{ session_id }}</p>
+    </div>
+
+    <div id="video-layer">
+        <video id="main-video" controls playsinline></video>
+    </div>
+
+    <script>
+        const SID = "{{ session_id }}";
+        const MOBILE_URL = "{{ mobile_url }}";
+        
+        // 1. 生成二维码
+        new QRCode(document.getElementById("qr-container"), {
+            text: MOBILE_URL,
+            width: 220,
+            height: 220,
+            colorDark : "#000000",
+            colorLight : "#ffffff"
+        });
+
+        // 2. 轮询状态
+        let isPlaying = false;
+        setInterval(async () => {
+            if(isPlaying) return;
+
+            try {
+                const res = await fetch(`/api/status/${SID}`);
+                const data = await res.json();
+                const st = document.getElementById('status-text');
+
+                if (data.status === 'processing') {
+                    st.innerText = "⚡ AI GENERATING VIDEO...";
+                    st.style.color = "#00d4ff";
+                    st.style.borderColor = "#00d4ff";
+                } 
+                else if (data.status === 'ready') {
+                    st.innerText = "📍 WAITING FOR BROADCAST (MAP)";
+                    st.style.color = "#00ff00";
+                    st.style.borderColor = "#00ff00";
+                }
+                else if (data.status === 'playing') {
+                    // 接收到播放指令
+                    playVideo(data.video_url);
+                }
+            } catch(e) {}
+        }, 2000);
+
+        function playVideo(url) {
+            isPlaying = true;
+            document.getElementById('idle-screen').style.opacity = 0;
+            setTimeout(() => {
+                document.getElementById('idle-screen').style.display = 'none';
+                const vLayer = document.getElementById('video-layer');
+                vLayer.style.display = 'block';
+                const vid = document.getElementById('main-video');
+                vid.src = url;
+                vid.play();
+                
+                vid.onended = () => location.reload(); // 播放完重置
+            }, 500);
+        }
+    </script>
+</body>
+</html>

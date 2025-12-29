@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Halo-Net Input</title>
+    <style>
+        body { background: #0a0a0a; color: #fff; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        
+        h2 { margin-bottom: 10px; }
+        p { color: #666; margin-top: 0; }
+
+        .upload-btn {
+            background: linear-gradient(135deg, #00d4ff, #005f73);
+            border: none; width: 100%; max-width: 300px;
+            padding: 20px; border-radius: 16px;
+            color: white; font-size: 18px; font-weight: bold;
+            box-shadow: 0 10px 30px rgba(0, 212, 255, 0.2);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: 0.2s;
+        }
+        .upload-btn:active { transform: scale(0.98); }
+        input[type="file"] { display: none; }
+        
+        #loading { display: none; color: #00d4ff; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <div style="text-align:center; margin-bottom:40px;">
+        <h2>📸 Upload Source</h2>
+        <p>Step 1: 上传图片或拍摄</p>
+    </div>
+
+    <label class="upload-btn">
+        <span>Tap to Camera / Album</span>
+        <input type="file" id="fileIn" accept="image/*" capture="environment">
+    </label>
+
+    <div id="loading">🚀 Uploading & Starting AI...</div>
+
+    <script>
+        const SID = "{{ session_id }}";
+        
+        document.getElementById('fileIn').onchange = async (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+
+            document.querySelector('.upload-btn').style.opacity = 0.5;
+            document.getElementById('loading').style.display = 'block';
+
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("session_id", SID);
+
+            try {
+                const res = await fetch('/api/upload', { method:'POST', body: fd });
+                const data = await res.json();
+                if(data.status === 'ok') {
+                    // 跳转到地图页
+                    window.location.href = data.next_url;
+                } else {
+                    alert("Upload Failed");
+                }
+            } catch(err) {
+                alert("Network Error");
+                document.querySelector('.upload-btn').style.opacity = 1;
+            }
+        };
+    </script>
+</body>
+</html>
